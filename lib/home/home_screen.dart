@@ -16,7 +16,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Updated _filters initialization
   FilterSheetResult _filters = FilterSheetResult(
     sortBy: 'date',
     order: 'descending',
@@ -55,14 +54,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<Todo> filterTodos() {
     return _todos.where((todo) {
-      // Check if the search text matches
       final matchesSearch = _searchController.text.isEmpty ||
           todo.text.toLowerCase().contains(_searchController.text.toLowerCase());
 
-      // Check if the "Archive" filter matches
-      final matchesArchive = (_filters.showOnlyCompleted && todo.completedAt != null) || (!_filters.showOnlyCompleted && todo.completedAt == null);
+      final matchesArchive = (_filters.showOnlyCompleted && todo.completedAt != null) ||
+          (!_filters.showOnlyCompleted && todo.completedAt == null);
 
-      // Return true if both conditions are satisfied
       return matchesSearch && matchesArchive;
     }).toList()
       ..sort((a, b) {
@@ -87,26 +84,51 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Home'),
+        title: Text(_isSelectionMode ? '${_selectedTodoIds.length} Selected' : 'Home'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () async {
-              final result = await showModalBottomSheet<FilterSheetResult>(
-                context: context,
-                builder: (context) {
-                  return FilterSheet(initialFilters: _filters);
-                },
-              );
-
-              if (result != null) {
+          if (_isSelectionMode) ...[
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () {
                 setState(() {
-                  _filters = result;
+                  _isSelectionMode = false;
+                  _selectedTodoIds.clear();
+                });
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: () async {
+                for (String id in _selectedTodoIds) {
+                  await FirebaseFirestore.instance.collection('todos').doc(id).delete();
+                }
+                setState(() {
+                  _isSelectionMode = false;
+                  _selectedTodoIds.clear();
                   _filteredTodos = filterTodos();
                 });
-              }
-            },
-          ),
+              },
+            ),
+          ],
+          if (!_isSelectionMode)
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              onPressed: () async {
+                final result = await showModalBottomSheet<FilterSheetResult>(
+                  context: context,
+                  builder: (context) {
+                    return FilterSheet(initialFilters: _filters);
+                  },
+                );
+
+                if (result != null) {
+                  setState(() {
+                    _filters = result;
+                    _filteredTodos = filterTodos();
+                  });
+                }
+              },
+            ),
         ],
       ),
       body: LayoutBuilder(
@@ -163,66 +185,67 @@ class _HomeScreenState extends State<HomeScreen> {
 
                         final isSelected = _selectedTodoIds.contains(todo.id);
 
-                        return ListTile(
-                          tileColor: todo.priority == 'low'
-                              ? Colors.green[100]
-                              : todo.priority == 'medium'
-                              ? Colors.yellow[100]
-                              : Colors.red[100],
-                          leading: _isSelectionMode
-                              ? Checkbox(
-                            value: isSelected,
-                            onChanged: (bool? value) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            border: isSelected
+                                ? Border.all(color: Colors.blue, width: 2.0)
+                                : null,
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          child: ListTile(
+                            tileColor: todo.priority == 'low'
+                                ? Colors.green[100]
+                                : todo.priority == 'medium'
+                                ? Colors.yellow[100]
+                                : Colors.red[100],
+                            leading: Checkbox(
+                              value: todo.completedAt != null,
+                              onChanged: (bool? value) {
+                                final updateData = {
+                                  'completedAt': value == true
+                                      ? FieldValue.serverTimestamp()
+                                      : null
+                                };
+                                FirebaseFirestore.instance
+                                    .collection('todos')
+                                    .doc(todo.id)
+                                    .update(updateData);
+                              },
+                            ),
+                            trailing: const Icon(Icons.arrow_forward_ios),
+                            title: Text(
+                              todo.text,
+                              style: todo.completedAt != null
+                                  ? const TextStyle(
+                                  decoration: TextDecoration.lineThrough)
+                                  : null,
+                            ),
+                            onTap: _isSelectionMode
+                                ? () {
                               setState(() {
-                                if (value == true) {
-                                  _selectedTodoIds.add(todo.id);
-                                } else {
+                                if (isSelected) {
                                   _selectedTodoIds.remove(todo.id);
+                                } else {
+                                  _selectedTodoIds.add(todo.id);
                                 }
                               });
+                            }
+                                : () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      DetailScreen(todo: todo),
+                                ),
+                              );
                             },
-                          )
-                              : Checkbox(
-                            value: todo.completedAt != null,
-                            onChanged: (bool? value) {
-                              final updateData = {
-                                'completedAt': value == true
-                                    ? FieldValue.serverTimestamp()
-                                    : null
-                              };
-                              FirebaseFirestore.instance
-                                  .collection('todos')
-                                  .doc(todo.id)
-                                  .update(updateData);
-                            },
-                          ),
-                          trailing: const Icon(Icons.arrow_forward_ios),
-                          title: Text(
-                            todo.text,
-                            style: todo.completedAt != null
-                                ? const TextStyle(
-                                decoration: TextDecoration.lineThrough)
-                                : null,
-                          ),
-                          onTap: _isSelectionMode
-                              ? () {
-                            setState(() {
-                              if (isSelected) {
-                                _selectedTodoIds.remove(todo.id);
-                              } else {
+                            onLongPress: () {
+                              setState(() {
+                                _isSelectionMode = true;
                                 _selectedTodoIds.add(todo.id);
-                              }
-                            });
-                          }
-                              : () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    DetailScreen(todo: todo),
-                              ),
-                            );
-                          },
+                              });
+                            },
+                          ),
                         );
                       },
                     ),
@@ -250,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 'text': _controller.text,
                                 'createdAt': FieldValue.serverTimestamp(),
                                 'uid': user?.uid,
-                                'priority': 'low', // Default priority set to 'low'
+                                'priority': 'low',
                               });
                               _controller.clear();
                             }

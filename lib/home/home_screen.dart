@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import '../data/todo.dart';
 import 'details/detail_screen.dart';
@@ -22,9 +21,22 @@ class _HomeScreenState extends State<HomeScreen> {
     showOnlyCompleted: false,
   );
 
+  late AudioPlayer _audioPlayer; // Use AudioPlayer for playing sounds
+  List<Todo> _todos = [];
+  List<Todo> _filteredTodos = [];
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _controller = TextEditingController();
+  Set<String> _selectedTodoIds = {};
+  bool _isSelectionMode = false;
+  User? user = FirebaseAuth.instance.currentUser;
+
   @override
   void initState() {
     super.initState();
+
+    // Initialize AudioPlayer
+    _audioPlayer = AudioPlayer();
+
     FirebaseFirestore.instance
         .collection('todos')
         .where('uid', isEqualTo: user?.uid)
@@ -37,18 +49,11 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  List<Todo> _todos = [];
-  List<Todo> _filteredTodos = [];
-  final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _controller = TextEditingController();
-  Set<String> _selectedTodoIds = {};
-  bool _isSelectionMode = false;
-  User? user = FirebaseAuth.instance.currentUser;
-
   @override
   void dispose() {
     _searchController.dispose();
     _controller.dispose();
+    _audioPlayer.dispose(); // Dispose AudioPlayer
     super.dispose();
   }
 
@@ -84,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isSelectionMode ? '${_selectedTodoIds.length} Selected' : 'Home'),
+        title: Text(_isSelectionMode ? '${_selectedTodoIds.length} Selected' : 'WeDo'),
         actions: [
           if (_isSelectionMode) ...[
             IconButton(
@@ -110,25 +115,52 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ],
-          if (!_isSelectionMode)
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              onPressed: () async {
-                final result = await showModalBottomSheet<FilterSheetResult>(
-                  context: context,
-                  builder: (context) {
-                    return FilterSheet(initialFilters: _filters);
+          if (!_isSelectionMode) ...[
+            Row(
+              children: [
+                Switch(
+                  value: _filters.showOnlyCompleted,
+                  onChanged: (value) {
+                    setState(() {
+                      _filters = FilterSheetResult(
+                        sortBy: _filters.sortBy,
+                        order: _filters.order,
+                        showOnlyCompleted: value,
+                      );
+                      _filteredTodos = filterTodos();
+                    });
                   },
-                );
-
-                if (result != null) {
-                  setState(() {
-                    _filters = result;
-                    _filteredTodos = filterTodos();
-                  });
-                }
-              },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.info),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) {
+                        return AlertDialog(
+                          title: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('About WeDo'),
+                              IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                            ],
+                          ),
+                          content: const Text(
+                            'WeDo is a simple TODO app that helps you manage your tasks efficiently. Use the bottom bar to add a task, and edit its due date notifications and priority by clicking on it once it has appeared. Use the search bar and sorting functionality to explore your tasks. Click on the checkbox next to a task to complete it, and use the toggle on the top right to explore an archive of completed tasks. You can long-press on a task to enter a selection mode that lets you delete multiple tasks at once. Let\'s have fun getting things done!',
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
             ),
+          ],
         ],
       ),
       body: LayoutBuilder(
@@ -200,24 +232,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                 : Colors.red[100],
                             leading: Checkbox(
                               value: todo.completedAt != null,
-                              onChanged: (bool? value) {
+                              onChanged: (bool? value) async {
                                 final updateData = {
                                   'completedAt': value == true
                                       ? FieldValue.serverTimestamp()
                                       : null
                                 };
-                                FirebaseFirestore.instance
+                                await FirebaseFirestore.instance
                                     .collection('todos')
                                     .doc(todo.id)
                                     .update(updateData);
+
+                                // Play the sound using AudioPlayer
+                                if (value == true) {
+                                  await _audioPlayer.stop();
+                                  await _audioPlayer.play(AssetSource('sounds/ding2.mp3'));
+                                }
                               },
                             ),
                             trailing: const Icon(Icons.arrow_forward_ios),
                             title: Text(
                               todo.text,
                               style: todo.completedAt != null
-                                  ? const TextStyle(
-                                  decoration: TextDecoration.lineThrough)
+                                  ? const TextStyle(decoration: TextDecoration.lineThrough)
                                   : null,
                             ),
                             onTap: _isSelectionMode
@@ -234,8 +271,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) =>
-                                      DetailScreen(todo: todo),
+                                  builder: (context) => DetailScreen(todo: todo),
                                 ),
                               );
                             },

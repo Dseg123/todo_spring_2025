@@ -42,4 +42,24 @@ class Todo {
       'recurrence': recurrence,
     };
   }
+
+  Todo copyWith({
+    String? id,
+    String? text,
+    String? priority,
+    DateTime? dueAt,
+    DateTime? createdAt,
+    DateTime? completedAt,
+    String? recurrence,
+  }) {
+    return Todo(
+      id: id ?? this.id,
+      text: text ?? this.text,
+      priority: priority ?? this.priority,
+      dueAt: dueAt ?? this.dueAt,
+      createdAt: createdAt ?? this.createdAt,
+      completedAt: completedAt ?? this.completedAt,
+      recurrence: recurrence ?? this.recurrence,
+    );
+  }
 }

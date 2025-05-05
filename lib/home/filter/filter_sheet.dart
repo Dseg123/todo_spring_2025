@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class FilterSheetResult {
   final String sortBy;
   final String order;
-  final bool showOnlyCompleted; // New field for "Archive" filter
+  final bool showOnlyCompleted; // Retained for compatibility
 
   FilterSheetResult({
     required this.sortBy,
@@ -27,13 +27,11 @@ class FilterSheet extends StatefulWidget {
 class _FilterSheetState extends State<FilterSheet> {
   String _sortBy = 'date';
   String _order = 'ascending';
-  bool _showOnlyCompleted = false; // Track "Archive" filter state
 
   @override
   void initState() {
     _sortBy = widget.initialFilters.sortBy;
     _order = widget.initialFilters.order;
-    _showOnlyCompleted = widget.initialFilters.showOnlyCompleted ?? false;
     super.initState();
   }
 
@@ -84,16 +82,6 @@ class _FilterSheetState extends State<FilterSheet> {
             ],
           ),
           const SizedBox(height: 16),
-          CheckboxListTile(
-            title: const Text('Archive (Show only completed tasks)'),
-            value: _showOnlyCompleted,
-            onChanged: (value) {
-              setState(() {
-                _showOnlyCompleted = value ?? false;
-              });
-            },
-          ),
-          const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(
@@ -101,7 +89,7 @@ class _FilterSheetState extends State<FilterSheet> {
                 FilterSheetResult(
                   sortBy: _sortBy,
                   order: _order,
-                  showOnlyCompleted: _showOnlyCompleted,
+                  showOnlyCompleted: widget.initialFilters.showOnlyCompleted, // Preserve value
                 ),
               );
             },

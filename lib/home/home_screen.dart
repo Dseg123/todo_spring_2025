@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
-
+import 'package:confetti/confetti.dart';
 import '../data/todo.dart';
 import 'details/detail_screen.dart';
 import 'filter/filter_sheet.dart';
@@ -21,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
     showOnlyCompleted: false,
   );
 
+  late ConfettiController _confettiController;
   late AudioPlayer _audioPlayer; // Use AudioPlayer for playing sounds
   List<Todo> _todos = [];
   List<Todo> _filteredTodos = [];
@@ -33,6 +34,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _confettiController = ConfettiController(duration: const Duration(milliseconds: 500));
+
 
     // Initialize AudioPlayer
     _audioPlayer = AudioPlayer();
@@ -88,8 +91,23 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.purple[50],
       appBar: AppBar(
-        title: Text(_isSelectionMode ? '${_selectedTodoIds.length} Selected' : 'WeDo'),
+        backgroundColor: Colors.blue[50],
+
+        title:Row(
+          children: [
+            Image.asset(
+              'assets/images/todo_logo.png', // Path to the logo
+              height: 24, // Adjust the size of the logo
+            ),
+            const SizedBox(width: 8), // Add some spacing between the logo and text
+            Text(
+              _isSelectionMode ? '${_selectedTodoIds.length} Selected' : 'WeDo',
+              style: const TextStyle(fontWeight: FontWeight.bold), // Make text bold
+            ),
+          ],
+        ),
         actions: [
           if (_isSelectionMode) ...[
             IconButton(
@@ -138,6 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       context: context,
                       builder: (context) {
                         return AlertDialog(
+                          backgroundColor: Colors.blue[50],
                           title: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -171,6 +190,16 @@ class _HomeScreenState extends State<HomeScreen> {
               width: isDesktop ? 600 : double.infinity,
               child: Column(
                 children: [
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: ConfettiWidget(
+                      confettiController: _confettiController,
+                      blastDirection: 3.14 / 2,
+                      blastDirectionality: BlastDirectionality.explosive,
+                      shouldLoop: false,
+                      colors: const [Colors.purple, Colors.blue],
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: TextField(
@@ -245,6 +274,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                                 // Play the sound using AudioPlayer
                                 if (value == true) {
+                                  if (_confettiController.state == ConfettiControllerState.playing) {
+                                    _confettiController.stop();
+                                  }
+                                  _confettiController.play();
                                   await _audioPlayer.stop();
                                   await _audioPlayer.play(AssetSource('sounds/ding2.mp3'));
                                 }
@@ -287,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   Container(
-                    color: Colors.green[100],
+                    color: Colors.blue[50],
                     padding: const EdgeInsets.all(32.0),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -319,6 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
+
                 ],
               ),
             ),

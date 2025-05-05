@@ -3,8 +3,13 @@ import 'package:flutter/material.dart';
 class FilterSheetResult {
   final String sortBy;
   final String order;
+  final bool showOnlyCompleted; // New field for "Archive" filter
 
-  FilterSheetResult({required this.sortBy, required this.order});
+  FilterSheetResult({
+    required this.sortBy,
+    required this.order,
+    this.showOnlyCompleted = false,
+  });
 }
 
 class FilterSheet extends StatefulWidget {
@@ -22,11 +27,13 @@ class FilterSheet extends StatefulWidget {
 class _FilterSheetState extends State<FilterSheet> {
   String _sortBy = 'date';
   String _order = 'ascending';
+  bool _showOnlyCompleted = false; // Track "Archive" filter state
 
   @override
   void initState() {
     _sortBy = widget.initialFilters.sortBy;
     _order = widget.initialFilters.order;
+    _showOnlyCompleted = widget.initialFilters.showOnlyCompleted ?? false;
     super.initState();
   }
 
@@ -50,6 +57,7 @@ class _FilterSheetState extends State<FilterSheet> {
                   items: const [
                     DropdownMenuItem(value: 'date', child: Text('Date')),
                     DropdownMenuItem(value: 'completed', child: Text('Completed')),
+                    DropdownMenuItem(value: 'priority', child: Text('Priority')),
                   ],
                   onChanged: (value) {
                     setState(() {
@@ -75,12 +83,26 @@ class _FilterSheetState extends State<FilterSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 200),
+          const SizedBox(height: 16),
+          CheckboxListTile(
+            title: const Text('Archive (Show only completed tasks)'),
+            value: _showOnlyCompleted,
+            onChanged: (value) {
+              setState(() {
+                _showOnlyCompleted = value ?? false;
+              });
+            },
+          ),
+          const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(
                 context,
-                FilterSheetResult(sortBy: _sortBy, order: _order),
+                FilterSheetResult(
+                  sortBy: _sortBy,
+                  order: _order,
+                  showOnlyCompleted: _showOnlyCompleted,
+                ),
               );
             },
             child: const Text('Apply'),

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import '../../data/todo.dart';
+import '../../notification_helper.dart';
 
 final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
@@ -19,130 +20,47 @@ class DetailScreen extends StatefulWidget {
 class _DetailScreenState extends State<DetailScreen> {
   late TextEditingController _textController;
   DateTime? _selectedDueDate;
+  String? _selectedPriority;
+  String? _selectedRecurrence; // Add recurrence field
 
   @override
   void initState() {
     super.initState();
     _textController = TextEditingController(text: widget.todo.text);
     _selectedDueDate = widget.todo.dueAt;
+    _selectedPriority = widget.todo.priority;
+    _selectedRecurrence = widget.todo.recurrence; // Initialize recurrence
   }
 
-  Future<void> _delete() async {
-    try {
-      await FirebaseFirestore.instance.collection('todos').doc(widget.todo.id).delete();
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Todo deleted!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete todo: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _updateText(String newText) async {
-    try {
-      await FirebaseFirestore.instance.collection('todos').doc(widget.todo.id).update({'text': newText});
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Todo updated!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update todo: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _updateDueDate(DateTime? newDueDate) async {
+  Future<void> _updateRecurrence(String? recurrence) async {
     try {
       await FirebaseFirestore.instance
           .collection('todos')
           .doc(widget.todo.id)
-          .update({'dueAt': newDueDate == null ? null : Timestamp.fromDate(newDueDate)});
+          .update({'recurrence': recurrence});
+
+      if (recurrence != null && _selectedDueDate != null) {
+        await NotificationHelper.scheduleNotification(
+          id: widget.todo.id.hashCode,
+          title: 'Reminder: ${widget.todo.text}',
+          body: 'This is a reminder for your task.',
+          scheduledTime: _selectedDueDate!,
+          recurrence: recurrence,
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recurrence updated!')),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update todo: $e')),
+          SnackBar(content: Text('Failed to update recurrence: $e')),
         );
       }
     }
-  }
-
-  Future<bool> _requestNotificationPermission() async {
-    final isGranted = await flutterLocalNotificationsPlugin
-            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-            ?.requestNotificationsPermission() ??
-        false;
-    return isGranted;
-  }
-
-  void _showPermissionDeniedSnackbar(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'You need to enable notifications to set due date.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white),
-        ),
-        backgroundColor: Colors.redAccent,
-        duration: Duration(seconds: 10),
-        action: SnackBarAction(
-          label: 'Open Settings',
-          textColor: Colors.white,
-          onPressed: () {
-            AppSettings.openAppSettings(
-              type: AppSettingsType.notification,
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Future<void> _initializeNotifications() async {
-    final initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-    final InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-    );
-    await flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-    );
-  }
-
-  Future<void> _scheduleNotification(
-    String todoId,
-    DateTime dueDate,
-    String text,
-  ) async {
-    final tzDateTime = tz.TZDateTime.from(dueDate, tz.local);
-    await flutterLocalNotificationsPlugin.zonedSchedule(
-      todoId.hashCode,
-      'Task due',
-      text,
-      tzDateTime,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'general_channel',
-          'General Notifications',
-        ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.inexact,
-      matchDateTimeComponents: DateTimeComponents.dateAndTime,
-    );
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
   }
 
   @override
@@ -196,6 +114,26 @@ class _DetailScreenState extends State<DetailScreen> {
             ),
             const SizedBox(height: 16),
             ListTile(
+              title: const Text('Priority'),
+              subtitle: DropdownButton<String>(
+                value: _selectedPriority,
+                items: const [
+                  DropdownMenuItem(value: 'low', child: Text('! Low Priority')),
+                  DropdownMenuItem(value: 'medium', child: Text('!! Medium Priority')),
+                  DropdownMenuItem(value: 'high', child: Text('!!! High Priority')),
+                ],
+                onChanged: (value) async {
+                  if (value != null && value != _selectedPriority) {
+                    setState(() {
+                      _selectedPriority = value;
+                    });
+                    await _updatePriority(value);
+                  }
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
               title: const Text('Due Date'),
               subtitle: Text(_selectedDueDate?.toLocal().toString().split('.')[0] ?? 'No due date'),
               trailing: Row(
@@ -214,24 +152,12 @@ class _DetailScreenState extends State<DetailScreen> {
                   IconButton(
                     icon: const Icon(Icons.calendar_today),
                     onPressed: () async {
-                      final isGranted = await _requestNotificationPermission();
-                      if (!context.mounted) return;
-
-                      if (!isGranted) {
-                        _showPermissionDeniedSnackbar(context);
-                        return;
-                      }
-
-                      await _initializeNotifications();
-                      if (!context.mounted) return;
-
                       final selectedDate = await showDatePicker(
                         context: context,
                         initialDate: _selectedDueDate ?? DateTime.now(),
                         firstDate: DateTime.now(),
                         lastDate: DateTime(2050),
                       );
-                      if (!context.mounted) return;
                       if (selectedDate == null) return;
 
                       final selectedTime = await showTimePicker(
@@ -254,14 +180,31 @@ class _DetailScreenState extends State<DetailScreen> {
                       });
 
                       await _updateDueDate(dueDate);
-                      await _scheduleNotification(
-                        widget.todo.id,
-                        dueDate,
-                        widget.todo.text,
-                      );
                     },
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              title: const Text('Recurrence'),
+              subtitle: DropdownButton<String>(
+                value: _selectedRecurrence,
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('None')),
+                  DropdownMenuItem(value: 'daily', child: Text('Daily')),
+                  DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
+                  DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+                ],
+                onChanged: _selectedDueDate == null
+                    ? null // Disable the dropdown if no due date is set
+                    : (value) async {
+                  setState(() {
+                    _selectedRecurrence = value;
+                  });
+                  await _updateRecurrence(value);
+                },
+                disabledHint: const Text('Set a due date first'), // Hint when disabled
               ),
             ),
           ],
@@ -269,4 +212,74 @@ class _DetailScreenState extends State<DetailScreen> {
       ),
     );
   }
+
+  Future<void> _delete() async {
+    try {
+      await FirebaseFirestore.instance.collection('todos').doc(widget.todo.id).delete();
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Todo deleted successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete todo: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateText(String newText) async {
+    try {
+      await FirebaseFirestore.instance.collection('todos').doc(widget.todo.id).update({'text': newText});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Todo text updated!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update text: $e')),
+      );
+    }
+  }
+
+  Future<void> _updatePriority(String priority) async {
+    try {
+      await FirebaseFirestore.instance.collection('todos').doc(widget.todo.id).update({'priority': priority});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Priority updated!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update priority: $e')),
+      );
+    }
+  }
+
+  Future<void> _updateDueDate(DateTime? dueDate) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('todos')
+          .doc(widget.todo.id)
+          .update({'dueAt': dueDate == null ? null : Timestamp.fromDate(dueDate)});
+
+      // Reset recurrence to None if due date is removed
+      if (dueDate == null) {
+        setState(() {
+          _selectedRecurrence = null;
+        });
+        await _updateRecurrence(null); // Update Firestore to reflect the change
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Due date updated!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update due date: $e')),
+      );
+    }
+  }
 }
+
